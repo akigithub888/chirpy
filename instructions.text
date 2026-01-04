@@ -1,0 +1,10 @@
+to build and run as server
+
+go build -o out && ./out
+
+
+./out is just to run it
+
+go run .      works as well
+
+Each time you change your code you'll need to rebuild and restart your server
