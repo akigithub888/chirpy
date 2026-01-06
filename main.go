@@ -13,9 +13,9 @@ type apiConfig struct {
 func main() {
 	cfg := &apiConfig{}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", readinessHandler)
-	mux.HandleFunc("/metrics", cfg.metricsHandler)
-	mux.HandleFunc("/reset", cfg.resetHandler)
+	mux.HandleFunc("GET /api/healthz", readinessHandler)
+	mux.HandleFunc("GET /api/metrics", cfg.metricsHandler)
+	mux.HandleFunc("POST /api/reset", cfg.resetHandler)
 
 	fileServer := http.FileServer(http.Dir("."))
 
