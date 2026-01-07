@@ -14,8 +14,8 @@ func main() {
 	cfg := &apiConfig{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", readinessHandler)
-	mux.HandleFunc("GET /api/metrics", cfg.metricsHandler)
-	mux.HandleFunc("POST /api/reset", cfg.resetHandler)
+	mux.HandleFunc("GET /admin/metrics", cfg.metricsHandler)
+	mux.HandleFunc("POST /admin/reset", cfg.resetHandler)
 
 	fileServer := http.FileServer(http.Dir("."))
 
