@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
@@ -17,39 +18,24 @@ func (cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Reques
 		Body string `json:"body"`
 	}
 
-	type errorResponse struct {
-		Error string `json:"error"`
-	}
-
-	type validResponse struct {
-		Valid bool `json:"valid"`
-	}
-
+	var req requestBody
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
-	var req requestBody
+
 	if err := decoder.Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse{
-			Error: "Something went wrong",
-		})
+		respondWithError(w, http.StatusBadRequest, "Something went wrong")
 		return
 	}
 
 	if len(req.Body) > 140 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResponse{
-			Error: "Chirp is too long",
-		})
+		respondWithError(w, http.StatusBadRequest, "Chirp is too long")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(validResponse{
-		Valid: true,
+	cleaned := cleanChirp(req.Body)
+
+	respondWithJSON(w, http.StatusOK, map[string]string{
+		"cleaned_body": cleaned,
 	})
 }
 
@@ -77,4 +63,37 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]string{
+		"error": msg,
+	})
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(payload)
+}
+
+func cleanChirp(body string) string {
+	badWords := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+
+	words := strings.Split(body, " ")
+
+	for i, word := range words {
+		lowered := strings.ToLower(word)
+		if _, exists := badWords[lowered]; exists {
+			words[i] = "****"
+		}
+	}
+
+	return strings.Join(words, " ")
 }
