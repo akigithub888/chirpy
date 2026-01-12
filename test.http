@@ -1,0 +1,17 @@
+### Valid chirp
+POST http://localhost:8080/api/validate_chirp
+Content-Type: application/json
+
+{
+  "body": "Hello Chirpy!"
+}
+
+###
+
+### Too long chirp
+POST http://localhost:8080/api/validate_chirp
+Content-Type: application/json
+
+{
+  "body": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+}

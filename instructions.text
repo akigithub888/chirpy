@@ -8,3 +8,19 @@ go build -o out && ./out
 go run .      works as well
 
 Each time you change your code you'll need to rebuild and restart your server
+
+starting postgres server:
+
+sudo service postgresql start
+
+to enter postgres shell
+
+sudo -u postgres psql 
+
+CONNECTION STRING:
+
+psql "postgres://aleksa:akilukidakimaki@localhost:5432/chirpy"
+
+MIGRATIONS:
+
+goose postgres "postgres://aleksa:akilukidakimaki@localhost:5432/chirpy" UP / DOWN

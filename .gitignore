@@ -1,2 +1,4 @@
-/out
-/test.http
+.out
+.test.http
+.instructions.text
+.env
