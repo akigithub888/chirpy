@@ -7,6 +7,31 @@ import (
 	"strings"
 )
 
+func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
+	type createuserRequest struct {
+		Email string `json:"email"`
+	}
+	var req createuserRequest
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	if err := decoder.Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error decoding user")
+		return
+	}
+	dbUser, err := cfg.db.CreateUser(r.Context(), req.Email)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error creating new user")
+		return
+	}
+	user := User{
+		ID:        dbUser.ID,
+		Email:     dbUser.Email,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+	}
+	respondWithJSON(w, http.StatusCreated, user)
+}
+
 func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
@@ -58,11 +83,22 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+
+	if cfg.platform != "dev" {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
 	cfg.fileserverHits.Store(0)
 
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	if err := cfg.db.DeleteAllUsers(r.Context()); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete users")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, map[string]string{
+		"message": "all users deleted",
+	})
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {

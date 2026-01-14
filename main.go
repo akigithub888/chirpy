@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"os"
 	"sync/atomic"
+	"time"
 
 	"github.com/akigithub888/chirpy/internal/database"
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 )
@@ -15,6 +17,13 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
+	platform       string
+}
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Email     string    `json:"email"`
 }
 
 func main() {
@@ -29,13 +38,15 @@ func main() {
 	}
 	dbQueries := database.New(db)
 	cfg := &apiConfig{
-		db: dbQueries,
+		db:       dbQueries,
+		platform: os.Getenv("PLATFORM"),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", readinessHandler)
 	mux.HandleFunc("GET /admin/metrics", cfg.metricsHandler)
 	mux.HandleFunc("POST /admin/reset", cfg.resetHandler)
 	mux.HandleFunc("POST /api/validate_chirp", cfg.validateChirpHandler)
+	mux.HandleFunc("POST /api/users", cfg.createUserHandler)
 
 	fileServer := http.FileServer(http.Dir("."))
 
