@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/akigithub888/chirpy/internal/database"
+	"github.com/google/uuid"
 )
 
 func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -38,12 +41,13 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func (cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Request) {
-	type requestBody struct {
-		Body string `json:"body"`
+func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
+	type createChirpRequest struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
 	}
 
-	var req requestBody
+	var req createChirpRequest
 	decoder := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
@@ -59,9 +63,28 @@ func (cfg *apiConfig) validateChirpHandler(w http.ResponseWriter, r *http.Reques
 
 	cleaned := cleanChirp(req.Body)
 
-	respondWithJSON(w, http.StatusOK, map[string]string{
-		"cleaned_body": cleaned,
-	})
+	dbChirp, err := cfg.db.CreateChirp(
+		r.Context(),
+		database.CreateChirpParams{
+			Body:   cleaned,
+			UserID: req.UserID,
+		},
+	)
+
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error creating chirp")
+		return
+	}
+
+	chirp := Chirp{
+		ID:        dbChirp.ID,
+		CreatedAt: dbChirp.CreatedAt,
+		UpdatedAt: dbChirp.UpdatedAt,
+		Body:      dbChirp.Body,
+		UserID:    dbChirp.UserID,
+	}
+
+	respondWithJSON(w, http.StatusCreated, chirp)
 }
 
 func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
