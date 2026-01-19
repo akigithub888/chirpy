@@ -7,9 +7,36 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/akigithub888/chirpy/internal/auth"
 	"github.com/akigithub888/chirpy/internal/database"
 	"github.com/google/uuid"
 )
+
+func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
+	var req loginRequest
+	decoder := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	if err := decoder.Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Error decoding request")
+	}
+	dbUser, err := cfg.db.GetUserByEmail(r.Context(), req.Email)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+		return
+	}
+	match, err := auth.CheckPasswordHash(req.Password, dbUser.HashedPassword)
+	if err != nil || !match {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+	}
+	user := User{
+		ID:        dbUser.ID,
+		Email:     dbUser.Email,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+	}
+
+	respondWithJSON(w, http.StatusOK, user)
+}
 
 func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
 	chirpIDStr := r.PathValue("chirpID")
@@ -60,7 +87,8 @@ func (cfg *apiConfig) getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	type createuserRequest struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	var req createuserRequest
 	decoder := json.NewDecoder(r.Body)
@@ -69,7 +97,15 @@ func (cfg *apiConfig) createUserHandler(w http.ResponseWriter, r *http.Request) 
 		respondWithError(w, http.StatusBadRequest, "Error decoding user")
 		return
 	}
-	dbUser, err := cfg.db.CreateUser(r.Context(), req.Email)
+	hashedPassword, err := auth.HashPassword(req.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error hashing password")
+	}
+
+	dbUser, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          req.Email,
+		HashedPassword: hashedPassword,
+	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating new user")
 		return

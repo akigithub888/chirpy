@@ -23,4 +23,4 @@ psql "postgres://aleksa:akilukidakimaki@localhost:5432/chirpy"
 
 MIGRATIONS:
 
-goose postgres "postgres://aleksa:akilukidakimaki@localhost:5432/chirpy" UP / DOWN
+goose -dir sql/schema postgres "postgres://aleksa:akilukidakimaki@localhost:5432/chirpy" up / down

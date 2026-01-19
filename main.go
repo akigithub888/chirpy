@@ -34,6 +34,11 @@ type Chirp struct {
 	UserID    uuid.UUID `json:"user_id"`
 }
 
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 func main() {
 	err := godotenv.Load(".env")
 	if err != nil {
@@ -57,6 +62,7 @@ func main() {
 	mux.HandleFunc("POST /api/chirps", cfg.createChirpHandler)
 	mux.HandleFunc("GET /api/chirps", cfg.getChirpsHandler)
 	mux.HandleFunc("GET /api/chirps/{chirpID}", cfg.getChirpHandler)
+	mux.HandleFunc("POST /api/login", cfg.loginHandler)
 
 	fileServer := http.FileServer(http.Dir("."))
 
