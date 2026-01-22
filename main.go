@@ -18,6 +18,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
 	platform       string
+	tokenSecret    string
 }
 type User struct {
 	ID        uuid.UUID `json:"id"`
@@ -37,6 +38,7 @@ type Chirp struct {
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+	Expires  int    `json:"expires_in_seconds"`
 }
 
 func main() {
@@ -51,8 +53,9 @@ func main() {
 	}
 	dbQueries := database.New(db)
 	cfg := &apiConfig{
-		db:       dbQueries,
-		platform: os.Getenv("PLATFORM"),
+		db:          dbQueries,
+		platform:    os.Getenv("PLATFORM"),
+		tokenSecret: os.Getenv("SECRET_KEY"),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", readinessHandler)

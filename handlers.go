@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/akigithub888/chirpy/internal/auth"
 	"github.com/akigithub888/chirpy/internal/database"
@@ -13,29 +14,62 @@ import (
 )
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
+	// 1️⃣ Decode request body
 	var req loginRequest
-	decoder := json.NewDecoder(r.Body)
-	defer r.Body.Close()
-	if err := decoder.Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Error decoding request")
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
 	}
-	dbUser, err := cfg.db.GetUserByEmail(r.Context(), req.Email)
+
+	// 2️⃣ Look up user by email
+	user, err := cfg.db.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
 		return
 	}
-	match, err := auth.CheckPasswordHash(req.Password, dbUser.HashedPassword)
-	if err != nil || !match {
+
+	// 3️⃣ Verify password
+	ok, err := auth.CheckPasswordHash(req.Password, user.HashedPassword)
+	if err != nil || !ok {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
-	}
-	user := User{
-		ID:        dbUser.ID,
-		Email:     dbUser.Email,
-		CreatedAt: dbUser.CreatedAt,
-		UpdatedAt: dbUser.UpdatedAt,
+		return
 	}
 
-	respondWithJSON(w, http.StatusOK, user)
+	// 4️⃣ Determine token expiration
+	const maxExpiration = time.Hour
+	expires := maxExpiration
+
+	if req.Expires > 0 {
+		requested := time.Duration(req.Expires) * time.Second
+		if requested < maxExpiration {
+			expires = requested
+		}
+	}
+
+	// 5️⃣ Create JWT
+	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, expires)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create token")
+		return
+	}
+
+	// 6️⃣ Respond with user + token
+	resp := struct {
+		ID        uuid.UUID `json:"id"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+		Email     string    `json:"email"`
+		Token     string    `json:"token"`
+	}{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+		Token:     token,
+	}
+
+	respondWithJSON(w, http.StatusOK, resp)
 }
 
 func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
@@ -127,8 +161,17 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request) {
 	type createChirpRequest struct {
-		Body   string    `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+		Body string `json:"body"`
+	}
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userID, err := auth.ValidateJWT(tokenString, cfg.tokenSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
 	}
 
 	var req createChirpRequest
@@ -151,7 +194,7 @@ func (cfg *apiConfig) createChirpHandler(w http.ResponseWriter, r *http.Request)
 		r.Context(),
 		database.CreateChirpParams{
 			Body:   cleaned,
-			UserID: req.UserID,
+			UserID: userID,
 		},
 	)
 
@@ -197,6 +240,11 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg.fileserverHits.Store(0)
+
+	if err := cfg.db.DeleteAllChirps(r.Context()); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete chirps")
+		return
+	}
 
 	if err := cfg.db.DeleteAllUsers(r.Context()); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete users")
