@@ -39,6 +39,15 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 	return token, err
 }
 
+const deleteAllRefreshTokens = `-- name: DeleteAllRefreshTokens :exec
+DELETE FROM refresh_tokens
+`
+
+func (q *Queries) DeleteAllRefreshTokens(ctx context.Context) error {
+	_, err := q.db.ExecContext(ctx, deleteAllRefreshTokens)
+	return err
+}
+
 const getUserFromRefreshToken = `-- name: GetUserFromRefreshToken :one
 SELECT
     u.id,

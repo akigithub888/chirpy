@@ -13,6 +13,71 @@ import (
 	"github.com/google/uuid"
 )
 
+func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
+	// 🔐 Authenticate
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userID, err := auth.ValidateJWT(tokenString, cfg.tokenSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	// 📥 Decode body
+	type updateUserRequest struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	var req updateUserRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	// 🚫 Require both fields
+	if req.Email == "" || req.Password == "" {
+		respondWithError(w, http.StatusBadRequest, "Email and password required")
+		return
+	}
+
+	// 🔐 Hash password
+	hashedPassword, err := auth.HashPassword(req.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error hashing password")
+		return
+	}
+
+	// 💾 Update user
+	user, err := cfg.db.UpdateUser(r.Context(), database.UpdateUserParams{
+		ID:             userID,
+		Email:          req.Email,
+		HashedPassword: hashedPassword,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error updating user")
+		return
+	}
+
+	// ✅ Respond with updated user (no password)
+	resp := struct {
+		ID        uuid.UUID `json:"id"`
+		Email     string    `json:"email"`
+		CreatedAt time.Time `json:"created_at"`
+		UpdatedAt time.Time `json:"updated_at"`
+	}{
+		ID:        user.ID,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
+
+	respondWithJSON(w, http.StatusOK, resp)
+}
+
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	//  Decode request body
 	var req loginRequest
@@ -302,6 +367,11 @@ func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg.fileserverHits.Store(0)
+
+	if err := cfg.db.DeleteAllRefreshTokens(r.Context()); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to delete tokens")
+		return
+	}
 
 	if err := cfg.db.DeleteAllChirps(r.Context()); err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Failed to delete chirps")
