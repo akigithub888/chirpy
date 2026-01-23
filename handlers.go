@@ -14,7 +14,7 @@ import (
 )
 
 func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
-	// 1️⃣ Decode request body
+	//  Decode request body
 	var req loginRequest
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -22,54 +22,116 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2️⃣ Look up user by email
+	//  Look up user by email
 	user, err := cfg.db.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
 		return
 	}
 
-	// 3️⃣ Verify password
+	// Verify password
 	ok, err := auth.CheckPasswordHash(req.Password, user.HashedPassword)
 	if err != nil || !ok {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
 		return
 	}
 
-	// 4️⃣ Determine token expiration
+	//  Determine token expiration
 	const maxExpiration = time.Hour
 	expires := maxExpiration
 
-	if req.Expires > 0 {
-		requested := time.Duration(req.Expires) * time.Second
-		if requested < maxExpiration {
-			expires = requested
-		}
-	}
-
-	// 5️⃣ Create JWT
+	//  Create JWT
 	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, expires)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not create token")
 		return
 	}
 
-	// 6️⃣ Respond with user + token
+	refresh_token, err := auth.MakeRefreshToken()
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create refresh token")
+		return
+	}
+	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour)
+
+	_, err = cfg.db.CreateRefreshToken(
+		r.Context(),
+		database.CreateRefreshTokenParams{
+			Token:     refresh_token,
+			UserID:    user.ID,
+			ExpiresAt: expiresAt,
+		},
+	)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not save refresh token")
+		return
+	}
+	//  Respond with user + token
 	resp := struct {
-		ID        uuid.UUID `json:"id"`
-		CreatedAt time.Time `json:"created_at"`
-		UpdatedAt time.Time `json:"updated_at"`
-		Email     string    `json:"email"`
-		Token     string    `json:"token"`
+		ID           uuid.UUID `json:"id"`
+		CreatedAt    time.Time `json:"created_at"`
+		UpdatedAt    time.Time `json:"updated_at"`
+		Email        string    `json:"email"`
+		Token        string    `json:"token"`
+		RefreshToken string    `json:"refresh_token"`
 	}{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: refresh_token,
 	}
 
 	respondWithJSON(w, http.StatusOK, resp)
+}
+
+func (cfg *apiConfig) refreshHandler(w http.ResponseWriter, r *http.Request) {
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	refreshTokenRecord, err := cfg.db.GetUserFromRefreshToken(r.Context(), tokenString)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	if refreshTokenRecord.RevokedAt.Valid {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	if time.Now().UTC().After(refreshTokenRecord.ExpiresAt) {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	accessToken, err := auth.MakeJWT(refreshTokenRecord.ID, cfg.tokenSecret, time.Hour)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not create access token")
+		return
+	}
+	respondWithJSON(w, http.StatusOK, map[string]string{
+		"token": accessToken,
+	})
+}
+
+func (cfg *apiConfig) revokeHandler(w http.ResponseWriter, r *http.Request) {
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	err = cfg.db.RevokeRefreshToken(r.Context(), tokenString)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not revoke refresh token")
+		return
+	}
+	// StatusNoContent is 204 no content
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (cfg *apiConfig) getChirpHandler(w http.ResponseWriter, r *http.Request) {
