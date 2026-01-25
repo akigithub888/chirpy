@@ -13,6 +13,47 @@ import (
 	"github.com/google/uuid"
 )
 
+func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request) {
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userID, err := auth.ValidateJWT(tokenString, cfg.tokenSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	chirpIDStr := r.PathValue("chirpID")
+
+	chirpID, err := uuid.Parse(chirpIDStr)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid chirp ID")
+		return
+	}
+	dbChirp, err := cfg.db.GetChirp(r.Context(), chirpID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Chirp not found")
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Error getting chirp")
+		return
+	}
+
+	if dbChirp.UserID != userID {
+		respondWithError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+	err = cfg.db.DeleteChirp(r.Context(), dbChirp.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error deleting chirp")
+	}
+
+	respondWithJSON(w, http.StatusNoContent, "Chirp deleted")
+}
+
 func (cfg *apiConfig) updateUserHandler(w http.ResponseWriter, r *http.Request) {
 	// 🔐 Authenticate
 	tokenString, err := auth.GetBearerToken(r.Header)
