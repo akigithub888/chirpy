@@ -19,12 +19,14 @@ type apiConfig struct {
 	db             *database.Queries
 	platform       string
 	tokenSecret    string
+	polkaKey       string
 }
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
+	ID          uuid.UUID `json:"id"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+	Email       string    `json:"email"`
+	IsChirpyRed bool      `json:"is_chirpy_red"`
 }
 
 type Chirp struct {
@@ -56,6 +58,7 @@ func main() {
 		db:          dbQueries,
 		platform:    os.Getenv("PLATFORM"),
 		tokenSecret: os.Getenv("SECRET_KEY"),
+		polkaKey:    os.Getenv("POLKA_KEY"),
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/healthz", readinessHandler)
@@ -70,6 +73,7 @@ func main() {
 	mux.HandleFunc("POST /api/revoke", cfg.revokeHandler)
 	mux.HandleFunc("PUT /api/users", cfg.updateUserHandler)
 	mux.HandleFunc("DELETE /api/chirps/{chirpID}", cfg.deleteChirpHandler)
+	mux.HandleFunc("POST /api/polka/webhooks", cfg.polkaWebhookHandler)
 
 	fileServer := http.FileServer(http.Dir("."))
 
